@@ -1,0 +1,17 @@
+# Python runtime / build artifacts
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+
+# Cookie jars — clearance / login tokens, never commit
+# (security review L4 / S39-2: INSANE_COOKIE_JAR_DIR may also point elsewhere)
+*.cookiejar
+.insane_cookies/
+
+# Runtime stderr / error capture (machine-specific noise)
+fetch.stderr
+fetch.err
+*.stderr

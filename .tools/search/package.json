@@ -1,0 +1,9 @@
+{
+  "name": "my-brain-search",
+  "version": "1.1.0",
+  "type": "module",
+  "description": "Keyword search for wiki and research notes",
+  "engines": {
+    "node": ">=22.16.0"
+  }
+}

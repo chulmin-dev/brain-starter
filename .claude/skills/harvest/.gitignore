@@ -1,0 +1,13 @@
+# Dependencies
+node_modules/
+
+# Runtime output lives in the vault's ignored .cache/brain/harvest directory.
+
+# Logs and transient output
+*.log
+*.err
+*.stderr
+*.tmp
+
+# OS cruft
+.DS_Store

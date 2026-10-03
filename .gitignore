@@ -1,0 +1,44 @@
+# === 런타임 캐시·로컬 상태 (공유 안 함) ===
+# .cache/brain/onboarded: vault별 첫 실행 안내 요청 표시(완료 기록 아님).
+.cache/
+node_modules/
+**/node_modules/
+.tools/graph/connectivity-report.md
+.tools/graph/connectivity-state.json
+.tools/*/node_modules/
+.tools/*/package-lock.json
+.hooks/session-end.log
+__pycache__/
+*.pyc
+*.bak
+
+# === Obsidian: vault 구성(core/community-plugins, app)은 공유, 휘발성은 무시 ===
+.obsidian/workspace.json
+.obsidian/workspace-*.json
+.obsidian/graph.json
+.obsidian/hotkeys.json
+.obsidian/plugins/
+# ↑ 플러그인 바이너리는 각자 설치 (community-plugins.json이 "이 플러그인 깔아라" 목록 역할)
+
+# === Claude Code: 프로젝트 settings.json(훅 등록)은 공유, 로컬 오버라이드는 무시 ===
+.claude/settings.local.json
+.claude/*.local.json
+
+# === brain 콘텐츠: 세션·원본은 각자 비공개. 폴더 구조(.gitkeep)만 유지 ===
+raw/sessions/*
+!raw/sessions/.gitkeep
+raw/inbox/meetings/*
+!raw/inbox/meetings/.gitkeep
+raw/inbox/documents/*
+!raw/inbox/documents/.gitkeep
+raw/inbox/clips/*
+!raw/inbox/clips/.gitkeep
+raw/meetings/*
+!raw/meetings/.gitkeep
+raw/documents/*
+!raw/documents/.gitkeep
+
+# === OS ===
+.DS_Store
+**/.DS_Store
+

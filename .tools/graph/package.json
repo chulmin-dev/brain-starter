@@ -1,0 +1,9 @@
+{
+  "name": "my-brain-graph",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Wikilink graph navigator for my-brain",
+  "dependencies": {
+    "graphology": "^0.26.0"
+  }
+}

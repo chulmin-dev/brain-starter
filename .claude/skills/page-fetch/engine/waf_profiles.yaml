@@ -1,0 +1,436 @@
+# WAF Product Profiles — never site-specific.
+#
+# NO-SITE-NAME RULE:
+#   * Key names are WAF products (akamai_bot_manager), not sites.
+#   * Detectors use product artifacts (cookies / headers / vendor strings).
+#   * Field values (markers, cookie names) must appear in any site running
+#     that WAF, not just one. If a value only fits one site, it belongs
+#     to runtime hints / observations, not this file.
+#
+# Profiles are *recommendations*, not deterministic recipes. The planner
+# treats them as priors; attempts always evaluate real responses.
+#
+# Timestamp each profile entry. If stale (> 6 months), cross-validate.
+
+_meta:
+  schema_version: 1
+  last_reviewed: "2026-06-12"
+
+akamai_bot_manager:
+  detectors:
+    cookie: ["_abck", "bm_sz", "ak_bmsc", "bm_sv", "bm_so"]
+    header: ["X-Akamai-*"]
+    server_contains: ["AkamaiGHost"]
+    body: ["sec-if-cpt-container", "Powered and protected by Akamai"]
+  confidence_rules:
+    # Multi-signal gating — single marker insufficient.
+    strong: 2     # any 2 signals from above → confidence 0.9
+    weak: 1       # 1 signal → confidence 0.6
+  capabilities_needed:
+    - needs_real_tls_stack   # Playwright Chromium (BoringSSL) is detected
+    - needs_js_exec          # 2.6KB challenge requires JS sensor
+  tls_impersonate_candidates:
+    # Every impersonate target curl_cffi supports that historically yielded
+    # at least a challenge page (i.e. IP still alive) rather than an outright
+    # TLS reject. Grouped by family; planner tries top groups first.
+    # Refresh quarterly — vendor WAFs shift which TLS fingerprints they trust.
+    - [safari, safari15_3, safari15_5, safari17_0, safari260]
+    - [safari_ios, safari17_2_ios, safari260_ios]
+    - [chrome99, chrome100, chrome101, chrome104, chrome110, chrome116, chrome119, chrome124, chrome131, chrome133a, chrome136, chrome145, chrome146]
+    - [chrome_android, chrome131_android]
+    - [edge99, edge101]
+  tls_impersonate_avoid:
+    # Empirically observed to 403 immediately (TLS fingerprint blacklisted).
+    # DO NOT hard-block — planner deprioritizes only. Refresh quarterly.
+    - safari18_0
+    - chrome107
+    - chrome120
+    - chrome123
+    - chrome145     # curl_cffi 0.11+ needed — mark avoid for older installs
+    - chrome146
+    - firefox
+    - firefox133
+    - firefox135
+  referer_strategies:
+    - self_root    # scheme://host/
+  url_transform_order:
+    - original
+    - mobile_subdomain   # www.* → m.* — strong observational win in SSR sites
+    - am_prefix          # P24: apex domains also reach mobile variant (iter_transformed dedup prevents duplicate when mobile_subdomain already fired)
+  fallback_when_challenge:
+    - curl_grid_exhaust   # try more impersonate × referer × url combos
+    - playwright_real_chrome
+  notes: |
+    DO NOT encode site-specific selectors or byte-size fingerprints here.
+    Those belong to caller's success_selectors param or observations log.
+
+cloudflare_turnstile:
+  detectors:
+    cookie: ["cf_clearance", "__cf_bm", "__cfduid"]
+    header: ["cf-ray", "cf-cache-status"]
+    server_contains: ["cloudflare"]
+    # `cType:` is Cloudflare's challenge-type marker in the interstitial JS
+    # Its presence is a strong challenge signal, not a solver instruction.
+    # `cf-mitigated` is the response header Cloudflare sets on mitigated
+    # requests (challenge cleared or bot action taken) — P24 (wafw00f catalog).
+    body: ["Just a moment...", "Checking your browser", "cf-chl-bypass", "Attention Required! | Cloudflare", "cType:", "cf-mitigated"]
+  capabilities_needed:
+    - needs_js_exec        # real-Chrome channel solver/template handles JS
+  tls_impersonate_candidates:
+    - [chrome, chrome_android]
+  referer_strategies:
+    - google_search
+    - self_root
+  fallback_when_challenge:
+    # P13 (W9): the active Turnstile solver runs first — it clicks the
+    # checkbox and polls the interstitial title, passing managed/interactive
+    # challenges the passive real-Chrome wait cannot. Plain real_chrome is the
+    # next fallback (handles non-interactive challenges + is the proven path
+    # when the solver can't locate the widget). `playwright_mcp` was removed
+    # from the lead: it returns UNKNOWN unconditionally outside a Claude
+    # session (executor.py), so on the CLI it was a guaranteed wasted attempt.
+    - playwright_real_chrome
+
+f5_big_ip:
+  detectors:
+    cookie: ["BigIPServer*", "TS01*", "F5_*"]
+    body: ["The requested URL was rejected", "support ID is:"]
+  capabilities_needed:
+    - needs_real_tls_stack
+  tls_impersonate_candidates:
+    - [safari, chrome]
+  referer_strategies:
+    - self_root
+
+aws_waf:
+  detectors:
+    cookie: ["aws-waf-token"]
+    header: ["x-amzn-requestid", "x-amzn-errortype", "x-amzn-waf-*"]
+    # Body markers are WAF block-page strings only — P24.
+    # `aws-waf-token` in body appears on the CAPTCHA interstitial page AWS WAF
+    # serves; `AWSManagedRulesCommonRuleSet` appears in block-response bodies
+    # when the managed rule group is configured to block (source: AWS WAF docs).
+    body: ["aws-waf-token", "AWSManagedRulesCommonRuleSet"]
+  confidence_rules:
+    # P24 (W22): x-amzn-requestid fires on ANY AWS-fronted response (API GW,
+    # ALB, etc.) regardless of WAF presence — it is a weak class-1 signal.
+    # aws-waf-token cookie / x-amzn-waf-* headers are WAF-specific (class-2).
+    # Body markers (class-3) only appear on active block/challenge pages.
+    # `require_multiclass_for_strong` caps confidence at 0.6 when all matching
+    # signals come from a single class (e.g. multiple x-amzn-* headers without
+    # a cookie or body confirmation). Only profiles with a known "noisy"
+    # infrastructure signal need this opt-in flag — all other profiles use
+    # raw signal count only (waf_detector.py: _score_profile).
+    strong: 2
+    weak: 1
+    require_multiclass_for_strong: true
+  capabilities_needed:
+    - needs_real_tls_stack
+  tls_impersonate_candidates:
+    - [chrome]
+  referer_strategies:
+    - self_root
+  notes: |
+    x-amzn-requestid fires on all AWS-fronted traffic (API GW, ALB) —
+    it is a necessary but not sufficient signal. Combine with aws-waf-token
+    cookie or x-amzn-waf-* header for strong confidence. Fingerprint sourced
+    from AWS WAF developer docs (public). Refresh quarterly.
+
+datadome_probable:
+  detectors:
+    cookie: ["datadome"]
+    body: ["DataDome"]
+  capabilities_needed:
+    - needs_real_tls_stack
+    - needs_js_exec
+  tls_impersonate_candidates:
+    - [safari, chrome]
+  fallback_when_challenge:
+    - playwright_real_chrome
+  notes: |
+    "_probable" suffix reminds us this is a growing attack surface — mark
+    as tentative until cross-site evidence accumulates in local diagnostics.
+
+perimeterx_human:
+  detectors:
+    cookie: ["_px3", "_pxhd", "_px2", "pxcts"]
+    body: ["px-captcha", "Press & Hold to confirm you are a human",
+           "_pxAppId"]  # P24: JS variable set by PerimeterX sensor script on every protected page (wafw00f catalog)
+  capabilities_needed:
+    - needs_real_tls_stack
+    - needs_js_exec
+  tls_impersonate_candidates:
+    - [safari, chrome]
+  fallback_when_challenge:
+    - playwright_real_chrome
+  notes: |
+    PerimeterX (now HUMAN Bot Defender). Distinct cookie family from
+    DataDome. Keep profiles separate so planner does not pick wrong
+    fallback strategy.
+
+imperva_incapsula:
+  detectors:
+    # Cookie family is the most reliable signal — Imperva sets these on
+    # every request through its edge, even before issuing a challenge.
+    # `_*` suffixes follow the underlying load-balancer hash; the
+    # underscore prefix is the stable part.
+    cookie: ["visid_incap_*", "incap_ses_*", "nlbi_*"]
+    # `X-Iinfo` is added on every Imperva-fronted response; `X-CDN`
+    # echoes the product name on blocks. Header names are
+    # case-insensitive in the detector.
+    header: ["X-Iinfo", "X-CDN"]
+    # Body string only appears on the actual block page (HTTP 403 etc.).
+    # "Incapsula incident ID" is the canonical attribution line.
+    body: ["Request unsuccessful. Incapsula", "_Incapsula_Resource"]
+  confidence_rules:
+    # Cookies + headers together = high confidence (deployment artifact).
+    # Body only = challenge page visible.
+    strong: 2
+    weak: 1
+  capabilities_needed:
+    - needs_real_tls_stack    # Imperva inspects TLS fingerprint
+    # Imperva can challenge with JS but a lot of profiles pass on TLS
+    # alone — keep JS as optional fallback rather than required.
+  tls_impersonate_candidates:
+    # Imperva tracks JA3/JA4 closely. Modern Chromium + Safari families
+    # are most reliable; older browser fingerprints get 403 fast.
+    - [chrome131, chrome133a, chrome136]
+    - [safari17_0, safari260]
+    - [chrome_android, safari_ios]
+  referer_strategies:
+    - google_search       # search-traffic profile gets more leniency
+    - self_root
+  url_transform_order:
+    - original
+    - mobile_subdomain    # observational pattern — mobile origins often skip JS challenge
+    - am_prefix           # P24: apex domains also reach mobile variant (iter_transformed dedup prevents duplicate)
+  fallback_when_challenge:
+    - curl_grid_exhaust
+    - playwright_real_chrome
+  notes: |
+    Fingerprint sourced from vendor docs + wafw00f signature database
+    (public). No site-specific entries. Refresh quarterly — Imperva
+    cycles cookie naming via product updates.
+
+kasada:
+  detectors:
+    # Kasada's KPSDK cookies are set on every protected request. The
+    # `x-kpsdk-` prefix is stable across deployments.
+    cookie: ["x-kpsdk-cd", "x-kpsdk-ct", "x-kpsdk-r", "x-kpsdk-v"]
+    # Same prefix surfaces on response headers Kasada uses to coordinate
+    # with the JS challenge. `*` wildcard catches future cookie names.
+    header: ["X-Kpsdk-*"]
+    # "Pardon Our Interruption" is the canonical Kasada block-page copy.
+    body: ["Pardon Our Interruption"]
+  confidence_rules:
+    strong: 2
+    weak: 1
+  capabilities_needed:
+    - needs_real_tls_stack    # Kasada inspects TLS + canvas + behaviour
+    - needs_js_exec           # JS challenge is heavy, real Chrome usually required
+  tls_impersonate_candidates:
+    # Kasada is harder than Imperva — fewer impersonates pass even probe.
+    # Keep candidate list narrow and Chrome-leaning.
+    - [chrome131, chrome133a, chrome136]
+    - [safari260]
+  referer_strategies:
+    - google_search
+    - self_root
+  fallback_when_challenge:
+    # Real Chrome is usually the only path that solves Kasada's JS
+    # sensor. curl_grid is unlikely to help but kept as cheap first try.
+    - curl_grid_exhaust
+    - playwright_real_chrome
+  notes: |
+    Kasada is one of the harder WAFs to bypass — multi-signal fingerprint
+    (TLS + canvas + behavioural). Profile is conservative; a real-Chrome
+    fallback is usually what gets through. Cookie / header names sourced
+    from vendor docs + wafw00f signature database (public, 2024-2026).
+
+sucuri_cloudproxy:
+  detectors:
+    # Sucuri Cloudproxy (CDN-style WAF) — server header is the cleanest
+    # signal, but cookies also distinguish from generic Sucuri install.
+    header: ["X-Sucuri-ID", "X-Sucuri-Cache"]
+    server_contains: ["Sucuri/Cloudproxy"]
+    cookie: ["sucuri_cloudproxy_uuid_*"]
+    body: ["Sucuri WebSite Firewall", "Access Denied - Sucuri Website Firewall"]
+  confidence_rules:
+    strong: 2
+    weak: 1
+  capabilities_needed:
+    - needs_real_tls_stack    # CDN-style, but TLS still inspected on blocks
+  tls_impersonate_candidates:
+    # Sucuri is the lightest of the three — broader candidate list ok.
+    - [chrome131, chrome136, chrome_android]
+    - [safari17_0, safari_ios]
+    - [edge99, edge101]
+  referer_strategies:
+    - self_root
+    - google_search
+  url_transform_order:
+    - original
+    - mobile_subdomain
+    - am_prefix  # P24: apex domains also reach mobile variant (iter_transformed dedup prevents duplicate)
+  fallback_when_challenge:
+    - curl_grid_exhaust
+    - playwright_real_chrome
+  notes: |
+    Sucuri Cloudproxy is a CDN-fronted WAF — many sites are protected
+    only when an active rule triggers, so most requests pass without
+    challenge. Fingerprint sourced from vendor docs + wafw00f signature
+    database (public). Refresh quarterly.
+
+# ---------------------------------------------------------------------------
+# P24 — new profiles (2026-06-12)
+# Fingerprints sourced from vendor public documentation + wafw00f signature
+# database (EnableSecurity/wafw00f on GitHub, public, 2024-2026). # NOTE-BIAS-OK
+# No site-specific entries. Profiles are priors; worst case = fall through
+# to unknown_challenge. Refresh quarterly.
+# ---------------------------------------------------------------------------
+
+fastly_sigsci:
+  detectors:
+    # Signal Sciences (now Fastly NGWAF) uses X-SigSci-* headers on protected
+    # responses. x-sigsci-tags appears on blocked/flagged requests; x-sigsci-requestid
+    # is set on every request through the agent. Both are product artifacts
+    # (source: Fastly NGWAF developer docs, wafw00f catalog).
+    header: ["x-sigsci-tags", "x-sigsci-requestid", "x-sigsci-agentresponse"]
+    # Block pages carry the vendor copy below.
+    body: ["Signal Sciences", "pow-button"]
+  confidence_rules:
+    strong: 2
+    weak: 1
+  capabilities_needed:
+    - needs_real_tls_stack
+  tls_impersonate_candidates:
+    - [chrome131, chrome136, chrome_android]
+    - [safari17_0, safari260]
+  referer_strategies:
+    - self_root
+    - google_search
+  fallback_when_challenge:
+    - curl_grid_exhaust
+    - playwright_real_chrome
+  notes: |
+    Fastly Next-Gen WAF (formerly Signal Sciences). Header names are stable
+    across deployments. Fingerprint sourced from Fastly NGWAF docs + wafw00f
+    signature database (public). Refresh quarterly.
+
+azure_front_door:
+  detectors:
+    # Azure Front Door sets X-Azure-* headers on every response it handles.
+    # X-Azure-Ref is the request tracking header (present on all AFD responses,
+    # not WAF-specific). X-Azure-SocketIP and X-FD-* headers appear on WAF
+    # block pages. x-ms-ref also used by AFD.
+    # Source: Azure Front Door docs + wafw00f catalog.
+    header: ["x-azure-ref", "x-azure-socketip", "x-fd-healthprobe", "x-ms-ref"]
+    # Block page body strings from Azure WAF default block response.
+    body: ["Microsoft-Azure-Application-Gateway", "Azure Front Door"]
+  confidence_rules:
+    strong: 2
+    weak: 1
+  capabilities_needed:
+    - needs_real_tls_stack
+  tls_impersonate_candidates:
+    - [chrome131, chrome136, chrome_android]
+    - [edge99, edge101]
+    - [safari17_0, safari260]
+  referer_strategies:
+    - self_root
+    - google_search
+  fallback_when_challenge:
+    - curl_grid_exhaust
+    - playwright_real_chrome
+  notes: |
+    Azure Front Door WAF. x-azure-ref fires on all AFD traffic (not WAF-
+    specific); combine with x-azure-socketip or body markers for strong
+    confidence. Fingerprint sourced from Azure docs + wafw00f catalog (public).
+    Refresh quarterly.
+
+cloud_armor:
+  detectors:
+    # Google Cloud Armor (GCA) does not add proprietary headers to normal
+    # responses — the clearest signal is the block-page body and the
+    # `server: Google Frontend` / `via: 1.1 google` chain that appears on
+    # GCA-fronted services.
+    # Source: GCA developer docs + wafw00f catalog.
+    server_contains: ["Google Frontend", "gws"]
+    header: ["x-goog-*"]
+    # Block page body strings from Cloud Armor default deny action.
+    body: ["The request was blocked by Cloud Armor", "Cloud Armor"]
+  confidence_rules:
+    strong: 2
+    weak: 1
+  capabilities_needed:
+    - needs_real_tls_stack
+  tls_impersonate_candidates:
+    - [chrome131, chrome136, chrome_android]
+    - [safari17_0, safari260]
+  referer_strategies:
+    - self_root
+    - google_search
+  fallback_when_challenge:
+    - curl_grid_exhaust
+    - playwright_real_chrome
+  notes: |
+    Google Cloud Armor. server_contains "Google Frontend" / "gws" fires broadly
+    on GCP-fronted traffic; body markers narrow to an active block. Fingerprint
+    sourced from GCA docs + wafw00f signature database (public). Refresh
+    quarterly.
+
+ddos_guard:
+  detectors:
+    # DDoS-Guard sets a dedicated header and body marker on challenge/block pages.
+    # The vendor also injects a cookie and its CDN edge appears in the server
+    # header as "ddos-guard". Source: wafw00f catalog + vendor docs (public).
+    header: ["ddos-guard"]
+    server_contains: ["ddos-guard"]
+    cookie: ["__ddg1_", "__ddg2_", "__ddgid_", "__ddgmark_"]
+    body: ["DDoS-Guard", "__ddg1_"]
+  confidence_rules:
+    strong: 2
+    weak: 1
+  capabilities_needed:
+    - needs_real_tls_stack
+    - needs_js_exec
+  tls_impersonate_candidates:
+    - [chrome131, chrome136, chrome_android]
+    - [safari17_0, safari260]
+  referer_strategies:
+    - self_root
+    - google_search
+  fallback_when_challenge:
+    - playwright_real_chrome
+  notes: |
+    DDoS-Guard CDN/WAF (separate vendor from Cloudflare/Akamai). Cookie family
+    __ddg1_ / __ddg2_ is stable across deployments. Fingerprint sourced from
+    wafw00f signature database (public). Refresh quarterly.
+
+# ---------------------------------------------------------------------------
+# Safety net: always-valid fallback profile.
+# ---------------------------------------------------------------------------
+unknown_challenge:
+  detectors: {}   # never matches actively — used only when no other profile fires
+  confidence_rules:
+    strong: 0
+    weak: 0
+  capabilities_needed:
+    - needs_js_exec     # conservative default
+  tls_impersonate_candidates:
+    - [safari, chrome, firefox]
+    - [safari_ios, chrome_android]
+  referer_strategies:
+    - self_root
+    - google_search
+    - none
+  url_transform_order:
+    - original
+    - mobile_subdomain
+  fallback_when_challenge:
+    - playwright_mcp
+    - playwright_real_chrome
+  notes: |
+    When detector returns low-confidence results we land here. Broad,
+    conservative grid. Evidence from these runs should feed local diagnostics
+    for eventual profile promotion.

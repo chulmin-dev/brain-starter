@@ -1,0 +1,11 @@
+{
+  "name": "harvest",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Bounded public fetch/crawl facade over sibling page-fetch, with honest terminal status when content is unavailable.",
+  "bin": { "harvest": "harvest.mjs" },
+  "scripts": {
+    "smoke": "node test/smoke.mjs"
+  }
+}

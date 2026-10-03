@@ -1,0 +1,9 @@
+#!/usr/bin/env node
+// Node entrypoint works directly on POSIX or as `node bin/brain-search` everywhere.
+(async () => {
+  const path = require('node:path');
+  const { pathToFileURL } = require('node:url');
+  const root = process.env.MY_BRAIN_DIR || process.env.CLAUDE_PROJECT_DIR || path.resolve(__dirname, '..');
+  process.env.MY_BRAIN_DIR = root;
+  await import(pathToFileURL(path.join(root, '.tools/search/brain-search.mjs')).href);
+})().catch(error => { console.error(error.message); process.exitCode = 5; });

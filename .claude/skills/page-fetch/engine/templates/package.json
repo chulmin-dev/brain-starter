@@ -1,0 +1,10 @@
+{
+  "name": "insane-search-templates",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Local deps for Playwright real-Chrome templates. Stealth via patchright (drop-in Playwright fork, CDP-leak hardened); plain playwright kept as graceful fallback. Install: npm install && npx patchright install chrome. patchright is pinned LOCKSTEP with playwright (exact same version) — bump both together to a version BOTH forks publish (latest common = 1.60.0; playwright has no 1.60.2).",
+  "dependencies": {
+    "patchright": "1.60.0",
+    "playwright": "1.60.0"
+  }
+}

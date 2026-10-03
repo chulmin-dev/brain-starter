@@ -75,7 +75,9 @@ Windows에 **Claude Desktop, Git for Windows, Node.js LTS(22.16+), python.org의
 - [ ] **내 vault 준비**: 템플릿에서 개인 저장소를 만들고 clone하거나 ZIP을 풀어 Obsidian vault로 여세요.
 - [ ] **Desktop에서 열기**: **Code 탭 → Local 환경**에서 같은 native Windows 폴더를 선택하세요. hooks가 프로젝트 경로를 자동 설정하므로 `export`나 PATH 수정은 필요 없습니다. 필요할 때만 Local 환경 편집기에 `MY_BRAIN_DIR`과 실제 Windows 경로를 넣으세요(PowerShell profile은 Desktop에 적용되지 않습니다).
 - [ ] **첫 안내와 스킬 확인**: 첫 세션의 안내를 따라가세요. `/onboarding`으로 다시 볼 수 있고, `/prompt-tune`, `/page-fetch`, `/harvest`는 프로젝트 스킬로 자동 로드됩니다. 검색·lint를 위해 선택 의존성을 설치할 필요는 없습니다.
-- [ ] **첫 노트 작성**: “처음 시작하자. 내 첫 프로젝트의 목표와 현재 상태를 물어보고, 내가 승인한 내용으로 `wiki/projects/`에 노트와 `wiki/index-projects.md` 카탈로그를 함께 만들어줘.” 예시 제목 “첫 프로젝트”는 설명용이며 자동으로 채워 넣지 않습니다.
+- [ ] **기존 프로젝트 등록**(진행 중인 프로젝트가 있다면): “내가 진행 중인 프로젝트 폴더는 `<경로1>`, `<경로2>`야. 각 폴더를 **읽기만** 해서(README·문서·최근 변경 내역) 목표와 현재 상태 초안을 보여주고, 내가 승인한 내용만 `wiki/projects/`에 노트로, `wiki/index-projects.md`에 카탈로그로 만들어줘.” 프로젝트 폴더 자체는 수정·이동하지 않습니다. vault 밖 폴더라 Claude가 읽기 권한을 물으면 허용하세요.
+- [ ] **첫 노트 작성**(진행 중인 프로젝트가 없다면): “처음 시작하자. 내 첫 프로젝트의 목표와 현재 상태를 물어보고, 내가 승인한 내용으로 `wiki/projects/`에 노트와 `wiki/index-projects.md` 카탈로그를 함께 만들어줘.” 예시 제목 “첫 프로젝트”는 설명용이며 자동으로 채워 넣지 않습니다.
+  다른 프로젝트 폴더를 Code 탭에서 직접 열고 작업할 때는 이 vault의 규칙·hook·스킬이 적용되지 않습니다. 그 작업에서 얻은 결정·배운 점은 vault 세션으로 돌아와 “<프로젝트> 오늘 한 일 정리해줘”라고 요청해 기록하세요.
 - [ ] **점검하고 검색**(첫 노트에 실제 적은 제목/문구로 검색).
   ```text
   node .tools/lint/lint.mjs --gate
